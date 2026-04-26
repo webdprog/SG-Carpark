@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SG Carpark Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #131921;
+    --card: #1a2333;
+    --border: #243044;
+    --accent: #00e5ff;
+    --accent2: #ff6b35;
+    --accent3: #39ff14;
+    --text: #e8edf5;
+    --muted: #6b7d99;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --radius: 12px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: linear-gradient(180deg, rgba(11,15,20,0.98) 70%, transparent);
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .logo span { color: var(--text); }
+
+  .search-wrap {
+    flex: 1;
+    position: relative;
+    max-width: 480px;
+  }
+  .search-wrap input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    padding: 10px 44px 10px 16px;
+    border-radius: 50px;
+    outline: none;
+    transition: border 0.2s, box-shadow 0.2s;
+  }
+  .search-wrap input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,255,0.12);
+  }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-btn {
+    position: absolute; right: 4px; top: 50%;
+    transform: translateY(-50%);
+    background: var(--accent);
+    border: none; cursor: pointer;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .search-btn:hover { background: #00c4db; transform: translateY(-50%) scale(1.08); }
+  .search-btn svg { width:14px; height:14px; fill:none; stroke:#000; stroke-width:2.5; stroke-linecap:round; }
+
+  .locate-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 8px 14px;
+    border-radius: 50px;
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .locate-btn:hover { background: var(--border); border-color: var(--accent); }
+  .locate-btn svg { width:13px; height:13px; }
+
+  /* ─── MAP ─── */
+  #map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    position: absolute;
+    bottom: 20px; left: 16px;
+    z-index: 1000;
+    width: 310px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .sidebar-header {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    padding: 0 4px;
+    pointer-events: none;
+  }
+
+  .cp-card {
+    background: rgba(19,25,33,0.96);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+    pointer-events: all;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow);
+  }
+  .cp-card:hover {
+    border-color: var(--accent);
+    transform: translateX(4px);
+    box-shadow: 0 8px 32px rgba(0,229,255,0.12);
+  }
+
+  .rank-badge {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .rank-1 { background: var(--accent); color: #000; }
+  .rank-2 { background: var(--accent2); color: #fff; }
+  .rank-3 { background: #7c3aed; color: #fff; }
+
+  .cp-info { flex: 1; min-width: 0; }
+  .cp-name {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+  .cp-meta { display: flex; gap: 10px; align-items: center; }
+  .cp-dist {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+  .avail-pill {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-family: 'Space Mono', monospace;
+  }
+  .avail-high { background: rgba(34,197,94,0.18); color: var(--green); }
+  .avail-mid  { background: rgba(245,158,11,0.18); color: var(--yellow); }
+  .avail-low  { background: rgba(239,68,68,0.18); color: var(--red); }
+
+  .cp-lots {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .lots-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .lots-label {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  /* ─── STATUS BAR ─── */
+  .status-bar {
+    position: absolute;
+    top: 68px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 1001;
+    background: rgba(19,25,33,0.95);
+    border: 1px solid var(--border);
+    padding: 7px 18px;
+    border-radius: 50px;
+    font-size: 12px;
+    color: var(--muted);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-bar.visible { display: flex; }
+  .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ─── MODAL ─── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.72);
+    z-index: 2000;
+    display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 520px;
+    padding: 28px 24px 36px;
+    transform: translateY(30px);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+
+  .modal-drag { width:40px; height:4px; background: var(--border); border-radius:2px; margin: 0 auto 22px; }
+
+  .modal-close {
+    position: absolute; top: 20px; right: 20px;
+    background: var(--border); border: none; cursor: pointer;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); font-size: 16px; display: flex;
+    align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  .modal-close:hover { background: var(--red); color: #fff; }
+
+  .modal-rank {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; letter-spacing: 1px; color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .modal-rank-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+
+  .modal-title {
+    font-size: 20px; font-weight: 700;
+    margin-bottom: 6px; line-height: 1.2;
+  }
+  .modal-address {
+    font-size: 13px; color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .modal-stats {
+    display: grid; grid-template-columns: repeat(3,1fr);
+    gap: 10px; margin-bottom: 20px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .stat-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px; font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .stat-lbl { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+
+  .avail-bar-wrap { margin-bottom: 20px; }
+  .avail-bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted); margin-bottom: 6px;
+  }
+  .avail-bar-bg {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .avail-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+  .modal-tags {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 22px;
+  }
+  .tag {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 11px; color: var(--muted);
+    padding: 4px 10px; border-radius: 20px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  .modal-actions { display: flex; gap: 10px; }
+  .btn-primary {
+    flex: 1;
+    background: var(--accent);
+    border: none; color: #000;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 600;
+    padding: 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .btn-primary:hover { background: #00c4db; transform: scale(1.02); }
+  .btn-secondary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500;
+    padding: 14px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* ─── LEAFLET OVERRIDES ─── */
+  .leaflet-tile-pane { filter: brightness(0.82) saturate(0.7) hue-rotate(185deg); }
+  .leaflet-container { background: #0b0f14; }
+
+  .cp-marker-icon {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    border: 2px solid rgba(0,0,0,0.3);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    cursor: pointer;
+  }
+  .me-dot {
+    width: 16px; height: 16px;
+    background: var(--accent3);
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 4px rgba(57,255,20,0.25), 0 0 14px rgba(57,255,20,0.5);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(57,255,20,0.25), 0 0 14px rgba(57,255,20,0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(57,255,20,0.1), 0 0 20px rgba(57,255,20,0.3); }
+  }
+
+  /* ─── SEARCH AUTOCOMPLETE ─── */
+  .autocomplete-list {
+    position: absolute;
+    top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 2000;
+    box-shadow: var(--shadow);
+    display: none;
+  }
+  .autocomplete-list.open { display: block; }
+  .ac-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    transition: background 0.15s;
+  }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover { background: var(--border); }
+  .ac-icon { color: var(--muted); font-size: 12px; }
+
+  /* ─── EMPTY STATE ─── */
+  .empty-state {
+    background: rgba(19,25,33,0.96);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+    text-align: center;
+    pointer-events: all;
+    backdrop-filter: blur(12px);
+  }
+  .empty-state p { font-size: 13px; color: var(--muted); }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 480px) {
+    .sidebar { left: 10px; right: 10px; width: auto; bottom: 14px; }
+    .modal-stats { grid-template-columns: repeat(2,1fr); }
+    .logo { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">CP<span>.</span>SG</div>
+  <div class="search-wrap">
+    <input id="searchInput" type="text" placeholder="Search area, street, or postal…" autocomplete="off"/>
+    <button class="search-btn" id="searchBtn" title="Search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <div class="autocomplete-list" id="acList"></div>
+  </div>
+  <button class="locate-btn" id="locateBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/></svg>
+    LOCATE ME
+  </button>
+</header>
+
+<!-- Status Bar -->
+<div class="status-bar" id="statusBar">
+  <div class="spinner"></div>
+  <span id="statusMsg">Fetching location…</span>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">NEAREST CARPARKS</div>
+  <div class="empty-state">
+    <p>📍 Press <strong>LOCATE ME</strong> or search an area to find nearby carparks</p>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-drag"></div>
+    <button class="modal-close" id="modalClose">✕</button>
+    <div class="modal-rank" id="modalRank">
+      <div class="modal-rank-dot" id="modalRankDot"></div>
+      <span id="modalRankText"></span>
+    </div>
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-address" id="modalAddress"></div>
+    <div class="modal-stats" id="modalStats"></div>
+    <div class="avail-bar-wrap">
+      <div class="avail-bar-label">
+        <span>Availability</span>
+        <span id="barPct"></span>
+      </div>
+      <div class="avail-bar-bg"><div class="avail-bar-fill" id="availBarFill"></div></div>
+    </div>
+    <div class="modal-tags" id="modalTags"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="gmapsBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Navigate via Google Maps
+      </button>
+      <button class="btn-secondary" id="modalClose2">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────
+const API_URL = 'https://data.gov.sg/api/action/datastore_search?resource_id=d_ca933a644e55d34fe21f28b8052fac63&limit=2000';
+const ONEMAP_SEARCH = 'https://www.onemap.gov.sg/api/common/elastic/search?searchVal={q}&returnGeom=Y&getAddrDetails=Y&pageNum=1';
+const NOMINATIM_URL  = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=sg&limit=5&q=';
+const RANK_COLORS = ['#00e5ff','#ff6b35','#7c3aed'];
+
+// ─── STATE ───────────────────────────────────────────────
+let map, userMarker, cpMarkers = [];
+let carparkData = [];     // raw availability
+let userLatLng  = null;   // {lat, lng}
+let selectedCP  = null;
+
+// ─── MAP INIT ────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: true })
+           .setView([1.3521, 103.8198], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+}
+
+// ─── UTILS ───────────────────────────────────────────────
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function fmtDist(m) {
+  return m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
+}
+
+function availClass(pct) {
+  if (pct > 50) return 'avail-high';
+  if (pct > 20) return 'avail-mid';
+  return 'avail-low';
+}
+
+function availLabel(pct) {
+  if (pct > 50) return 'HIGH';
+  if (pct > 20) return 'MED';
+  return 'LOW';
+}
+
+function availColor(pct) {
+  if (pct > 50) return '#22c55e';
+  if (pct > 20) return '#f59e0b';
+  return '#ef4444';
+}
+
+function showStatus(msg) {
+  document.getElementById('statusMsg').textContent = msg;
+  document.getElementById('statusBar').classList.add('visible');
+}
+function hideStatus() {
+  document.getElementById('statusBar').classList.remove('visible');
+}
+
+// ─── FETCH CARPARK AVAILABILITY ──────────────────────────
+async function fetchCarparks() {
+  showStatus('Loading carpark data…');
+  try {
+    const res = await fetch(API_URL);
+    const json = await res.json();
+    carparkData = (json.result?.records || []).map(r => ({
+      carpark_number: r.carpark_number,
+      lots_available: parseInt(r.lots_available) || 0,
+      total_lots:     parseInt(r.total_lots) || 0,
+      lot_type:       r.lot_type || 'C',
+    }));
+    hideStatus();
+    return true;
+  } catch(e) {
+    hideStatus();
+    showStatus('⚠ Could not load carpark data');
+    setTimeout(hideStatus, 3000);
+    return false;
+  }
+}
+
+// ─── HDB CARPARK LOCATION DB (built-in subset + runtime fetch) ──
+// We'll fetch HDB carpark info from data.gov.sg carpark information dataset
+let carparkInfo = {};
+
+async function fetchCarparkInfo() {
+  try {
+    const res = await fetch('https://data.gov.sg/api/action/datastore_search?resource_id=d_23f946fa557947f93a8043bbef41dd09&limit=3000');
+    const json = await res.json();
+    (json.result?.records || []).forEach(r => {
+      if (r.car_park_no && r.x_coord && r.y_coord) {
+        const latlng = svy21ToLatLng(parseFloat(r.x_coord), parseFloat(r.y_coord));
+        carparkInfo[r.car_park_no] = {
+          id:       r.car_park_no,
+          address:  r.address || r.car_park_no,
+          lat:      latlng.lat,
+          lng:      latlng.lng,
+          type:     r.car_park_type   || 'SURFACE',
+          system:   r.type_of_parking_system || 'COUPON',
+          freepark: r.free_parking    || 'NO',
+          nightpark:r.night_parking   || 'YES',
+          shortterm:r.short_term_parking || 'WHOLE DAY',
+        };
+      }
+    });
+  } catch(e) {
+    console.warn('Could not fetch carpark info', e);
+  }
+}
+
+// SVY21 → WGS84 conversion
+function svy21ToLatLng(x, y) {
+  const a = 6378137, f = 1/298.257223563;
+  const b = a*(1-f), e2 = 1-(b/a)**2;
+  const n0 = 38744.572, E0 = 28001.642;
+  const k0 = 1, lat0 = 1.366666*Math.PI/180, lng0 = 103.833333*Math.PI/180;
+  const N = y - n0 + 6356755.288;
+  const E_c = x - E0;
+  const n = (a-b)/(a+b);
+  let latRad = N/(a*k0);
+  for(let i=0;i<10;i++){
+    const M = a*k0*((1-e2/4-3*e2**2/64)*latRad - (3*e2/8+3*e2**2/32)*Math.sin(2*latRad) + (15*e2**2/256)*Math.sin(4*latRad));
+    latRad += (N - M + n0 - 6356755.288)/(a*k0);
+  }
+  const sinLat = Math.sin(latRad), cosLat = Math.cos(latRad), tanLat = Math.tan(latRad);
+  const nu = a/Math.sqrt(1-e2*sinLat**2);
+  const rho = a*(1-e2)/(1-e2*sinLat**2)**1.5;
+  const eta2 = nu/rho - 1;
+  const T = tanLat**2, C = e2/(1-e2)*cosLat**2;
+  const ep = E_c/(nu*k0);
+  const lat = latRad - (nu*tanLat/rho)*(ep**2/2 - (5+3*T+10*C-4*C**2-9*eta2)*ep**4/24 + (61+90*T+298*C+45*T**2-252*eta2-3*C**2)*ep**6/720);
+  const lng = lng0 + (ep - (1+2*T+C)*ep**3/6 + (5-2*C+28*T-3*C**2+8*eta2+24*T**2)*ep**5/120)/cosLat;
+  return { lat: lat*180/Math.PI, lng: lng*180/Math.PI };
+}
+
+// ─── MERGE & FIND NEAREST ───────────────────────────────
+function findNearest(lat, lng, count = 3) {
+  const results = [];
+  for (const [id, info] of Object.entries(carparkInfo)) {
+    const avail = carparkData.find(d => d.carpark_number === id);
+    const dist  = haversine(lat, lng, info.lat, info.lng);
+    results.push({ ...info, dist, avail });
+  }
+  results.sort((a,b) => a.dist - b.dist);
+  return results.slice(0, count);
+}
+
+// ─── RENDER SIDEBAR CARDS ────────────────────────────────
+function renderSidebar(carparks) {
+  const sidebar = document.getElementById('sidebar');
+  const header  = sidebar.querySelector('.sidebar-header');
+
+  sidebar.innerHTML = '';
+  sidebar.appendChild(header);
+
+  if (!carparks.length) {
+    sidebar.innerHTML += '<div class="empty-state"><p>No carparks found nearby.</p></div>';
+    return;
+  }
+
+  carparks.forEach((cp, i) => {
+    const total  = cp.avail?.total_lots || 0;
+    const free   = cp.avail?.lots_available || 0;
+    const pct    = total > 0 ? Math.round((free/total)*100) : 0;
+    const card   = document.createElement('div');
+    card.className = 'cp-card';
+    card.innerHTML = `
+      <div class="rank-badge rank-${i+1}">${i+1}</div>
+      <div class="cp-info">
+        <div class="cp-name">${cp.address}</div>
+        <div class="cp-meta">
+          <span class="cp-dist">${fmtDist(cp.dist)}</span>
+          <span class="avail-pill ${availClass(pct)}">${availLabel(pct)} · ${pct}%</span>
+        </div>
+      </div>
+      <div class="cp-lots">
+        <div class="lots-num" style="color:${availColor(pct)}">${free}</div>
+        <div class="lots-label">LOTS</div>
+      </div>
+    `;
+    card.addEventListener('click', () => openModal(cp, i));
+    sidebar.appendChild(card);
+  });
+}
+
+// ─── MARKERS ────────────────────────────────────────────
+function placeUserMarker(lat, lng) {
+  if (userMarker) userMarker.remove();
+  const icon = L.divIcon({
+    html: '<div class="me-dot"></div>',
+    className: '',
+    iconSize: [16,16],
+    iconAnchor: [8,8]
+  });
+  userMarker = L.marker([lat, lng], { icon }).addTo(map);
+  userMarker.bindTooltip('You are here', { direction:'top', offset:[0,-10] });
+}
+
+function placeCPMarkers(carparks) {
+  cpMarkers.forEach(m => m.remove());
+  cpMarkers = [];
+
+  carparks.forEach((cp, i) => {
+    const color = RANK_COLORS[i];
+    const icon  = L.divIcon({
+      html: `<div class="cp-marker-icon" style="background:${color};color:${i===0?'#000':'#fff'}">${i+1}</div>`,
+      className: '',
+      iconSize: [32,32],
+      iconAnchor: [16,16]
+    });
+    const m = L.marker([cp.lat, cp.lng], { icon }).addTo(map);
+    m.on('click', () => openModal(cp, i));
+    cpMarkers.push(m);
+  });
+}
+
+// ─── FIT MAP ─────────────────────────────────────────────
+function fitMap(userLat, userLng, carparks) {
+  const points = [[userLat, userLng], ...carparks.map(c => [c.lat, c.lng])];
+  const bounds = L.latLngBounds(points);
+  map.fitBounds(bounds, { padding: [80, 80] });
+}
+
+// ─── MODAL ───────────────────────────────────────────────
+function openModal(cp, rank) {
+  selectedCP = cp;
+  const total = cp.avail?.total_lots || 0;
+  const free  = cp.avail?.lots_available || 0;
+  const pct   = total > 0 ? Math.round((free/total)*100) : 0;
+
+  const rankColors = ['#00e5ff','#ff6b35','#7c3aed'];
+  document.getElementById('modalRankDot').style.background = rankColors[rank];
+  document.getElementById('modalRankText').textContent     = `#${rank+1} NEAREST`;
+  document.getElementById('modalTitle').textContent        = cp.address;
+  document.getElementById('modalAddress').textContent      = `${fmtDist(cp.dist)} away · ${cp.id}`;
+
+  document.getElementById('modalStats').innerHTML = `
+    <div class="stat-box">
+      <div class="stat-val" style="color:${availColor(pct)}">${free}</div>
+      <div class="stat-lbl">AVAILABLE</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val">${total}</div>
+      <div class="stat-lbl">TOTAL LOTS</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" style="color:${availColor(pct)}">${pct}%</div>
+      <div class="stat-lbl">OCCUPANCY</div>
+    </div>
+  `;
+
+  document.getElementById('barPct').textContent        = `${free}/${total} lots`;
+  document.getElementById('availBarFill').style.width  = `${pct}%`;
+  document.getElementById('availBarFill').style.background = availColor(pct);
+
+  const tags = [
+    cp.type,
+    cp.system,
+    cp.freepark !== 'NO' ? '🅿 FREE PARKING' : null,
+    cp.nightpark === 'YES' ? '🌙 NIGHT PARKING' : null,
+    cp.shortterm,
+    cp.avail?.lot_type === 'C' ? 'CARS' : cp.avail?.lot_type === 'H' ? 'HEAVY VEHICLES' : cp.avail?.lot_type === 'Y' ? 'MOTORCYCLES' : 'CARS'
+  ].filter(Boolean);
+
+  document.getElementById('modalTags').innerHTML = tags.map(t => `<span class="tag">${t}</span>`).join('');
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalClose2').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+document.getElementById('gmapsBtn').addEventListener('click', () => {
+  if (!selectedCP) return;
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedCP.lat},${selectedCP.lng}&travelmode=driving`;
+  window.open(url, '_blank');
+});
+
+// ─── GEOLOCATION ─────────────────────────────────────────
+async function locateMe() {
+  if (!navigator.geolocation) {
+    showStatus('⚠ Geolocation not supported');
+    setTimeout(hideStatus, 3000);
+    return;
+  }
+  showStatus('Fetching your location…');
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      userLatLng = { lat, lng };
+      placeUserMarker(lat, lng);
+      map.setView([lat, lng], 14);
+      await processLocation(lat, lng);
+    },
+    err => {
+      hideStatus();
+      showStatus(`⚠ ${err.message}`);
+      setTimeout(hideStatus, 4000);
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+async function processLocation(lat, lng) {
+  showStatus('Finding nearest carparks…');
+  if (!carparkData.length) await fetchCarparks();
+  if (!Object.keys(carparkInfo).length) await fetchCarparkInfo();
+
+  const nearest = findNearest(lat, lng);
+  renderSidebar(nearest);
+  placeUserMarker(lat, lng);
+  placeCPMarkers(nearest);
+  fitMap(lat, lng, nearest);
+  hideStatus();
+}
+
+// ─── SEARCH ───────────────────────────────────────────────
+let searchTimeout;
+const searchInput = document.getElementById('searchInput');
+const acList      = document.getElementById('acList');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = searchInput.value.trim();
+  if (q.length < 2) { acList.classList.remove('open'); return; }
+  searchTimeout = setTimeout(() => doAutocomplete(q), 300);
+});
+
+async function doAutocomplete(q) {
+  try {
+    const res  = await fetch(NOMINATIM_URL + encodeURIComponent(q + ' Singapore'));
+    const data = await res.json();
+    if (!data.length) { acList.classList.remove('open'); return; }
+    acList.innerHTML = data.slice(0,5).map((r,i) =>
+      `<div class="ac-item" data-lat="${r.lat}" data-lng="${r.lon}">
+        <span class="ac-icon">📍</span>
+        <span>${r.display_name.replace(', Singapore','').split(',').slice(0,3).join(', ')}</span>
+       </div>`
+    ).join('');
+    acList.classList.add('open');
+    acList.querySelectorAll('.ac-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const lat = parseFloat(el.dataset.lat);
+        const lng = parseFloat(el.dataset.lng);
+        searchInput.value = el.querySelector('span:last-child').textContent;
+        acList.classList.remove('open');
+        userLatLng = { lat, lng };
+        map.setView([lat, lng], 15);
+        processLocation(lat, lng);
+      });
+    });
+  } catch(e) { acList.classList.remove('open'); }
+}
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    acList.classList.remove('open');
+    if (userLatLng) return;
+    const q = searchInput.value.trim();
+    if (q) doSearchAndGo(q);
+  }
+});
+document.getElementById('searchBtn').addEventListener('click', () => {
+  acList.classList.remove('open');
+  const q = searchInput.value.trim();
+  if (q) doSearchAndGo(q);
+});
+
+async function doSearchAndGo(q) {
+  showStatus('Searching…');
+  try {
+    const res  = await fetch(NOMINATIM_URL + encodeURIComponent(q + ' Singapore'));
+    const data = await res.json();
+    if (!data.length) { showStatus('⚠ Location not found'); setTimeout(hideStatus,3000); return; }
+    const { lat, lon } = data[0];
+    userLatLng = { lat: parseFloat(lat), lng: parseFloat(lon) };
+    map.setView([userLatLng.lat, userLatLng.lng], 15);
+    await processLocation(userLatLng.lat, userLatLng.lng);
+  } catch(e) {
+    showStatus('⚠ Search failed'); setTimeout(hideStatus,3000);
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!document.querySelector('.search-wrap').contains(e.target)) {
+    acList.classList.remove('open');
+  }
+});
+
+document.getElementById('locateBtn').addEventListener('click', locateMe);
+
+// ─── INIT ─────────────────────────────────────────────────
+(async () => {
+  initMap();
+  showStatus('Loading carpark database…');
+  await Promise.all([fetchCarparks(), fetchCarparkInfo()]);
+  hideStatus();
+})();
+</script>
+</body>
+</html>
