@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CP.SG — Singapore Carpark Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap"/>
+<style>
+/* ═══════════════════════════════ TOKENS */
+:root {
+  --bg:      #0b0f14;
+  --surface: #131921;
+  --card:    #1a2333;
+  --border:  #243044;
+  --accent:  #00e5ff;
+  --a2:      #ff6b35;
+  --a3:      #39ff14;
+  --text:    #e8edf5;
+  --muted:   #6b7d99;
+  --green:   #22c55e;
+  --yellow:  #f59e0b;
+  --red:     #ef4444;
+  --r:       12px;
+  --sh:      0 8px 32px rgba(0,0,0,.55);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); position:relative; }
+
+/* ═══════════════════════════════ LEAFLET OVERRIDE */
+#map { position:absolute; inset:0; z-index:1; background:var(--bg); }
+.leaflet-tile-pane { filter:brightness(.78) saturate(.6) hue-rotate(185deg); }
+
+/* ═══════════════════════════════ HEADER */
+header {
+  position:absolute; top:0; left:0; right:0; z-index:500;
+  padding:13px 16px;
+  display:flex; align-items:center; gap:10px;
+  background:linear-gradient(180deg,rgba(11,15,20,.97) 60%,transparent);
+}
+.logo {
+  font-family:'Space Mono',monospace; font-size:12px; font-weight:700;
+  letter-spacing:2.5px; color:var(--accent); white-space:nowrap; flex-shrink:0;
+}
+.logo em { color:var(--text); font-style:normal; }
+
+/* search */
+.sw { flex:1; position:relative; max-width:460px; }
+.sw input {
+  width:100%; background:var(--card); border:1.5px solid var(--border);
+  color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px;
+  padding:9px 42px 9px 15px; border-radius:50px; outline:none;
+  transition:border .2s, box-shadow .2s;
+}
+.sw input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,.1); }
+.sw input::placeholder { color:var(--muted); }
+.sw-btn {
+  position:absolute; right:4px; top:50%; transform:translateY(-50%);
+  background:var(--accent); border:none; cursor:pointer;
+  width:31px; height:31px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .2s;
+}
+.sw-btn:hover { background:#00c4db; }
+.sw-btn svg { width:13px; height:13px; fill:none; stroke:#000; stroke-width:2.5; stroke-linecap:round; }
+
+/* autocomplete */
+.ac {
+  position:absolute; top:calc(100% + 5px); left:0; right:0;
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--r); overflow:hidden; z-index:600;
+  box-shadow:var(--sh); display:none;
+}
+.ac.open { display:block; }
+.ac-row {
+  padding:9px 14px; font-size:13px; cursor:pointer;
+  display:flex; align-items:center; gap:9px;
+  border-bottom:1px solid var(--border); transition:background .12s;
+}
+.ac-row:last-child { border:none; }
+.ac-row:hover { background:var(--border); }
+
+/* header buttons */
+.hbtns { display:flex; gap:7px; flex-shrink:0; }
+.hbtn {
+  background:var(--card); border:1.5px solid var(--border); color:var(--accent);
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1px;
+  padding:7px 11px; border-radius:50px; cursor:pointer;
+  display:flex; align-items:center; gap:5px;
+  transition:background .2s, border-color .2s; white-space:nowrap;
+}
+.hbtn:hover { background:var(--border); border-color:var(--accent); }
+.hbtn svg { width:11px; height:11px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--red); transition:background .4s; flex-shrink:0; }
+.dot.ok { background:var(--green); }
+
+/* ═══════════════════════════════ STATUS PILL */
+.status {
+  position:absolute; top:64px; left:50%; transform:translateX(-50%);
+  z-index:600; background:rgba(19,25,33,.96); border:1px solid var(--border);
+  padding:6px 16px; border-radius:50px; font-size:12px; color:var(--muted);
+  backdrop-filter:blur(8px); display:none; align-items:center; gap:8px; white-space:nowrap;
+}
+.status.on { display:flex; }
+.spin {
+  width:11px; height:11px; border:2px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin .65s linear infinite; flex-shrink:0;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ═══════════════════════════════ SIDEBAR */
+.sb {
+  position:absolute; bottom:18px; left:14px; z-index:500;
+  width:310px; display:flex; flex-direction:column; gap:9px; pointer-events:none;
+}
+.sb-title {
+  font-family:'Space Mono',monospace; font-size:10px;
+  letter-spacing:2px; color:var(--muted); padding:0 3px;
+}
+.cp-card {
+  background:rgba(19,25,33,.95); border:1.5px solid var(--border);
+  border-radius:var(--r); padding:13px 15px;
+  cursor:pointer; pointer-events:all;
+  display:flex; align-items:center; gap:13px;
+  transition:border-color .2s, transform .15s, box-shadow .2s;
+  backdrop-filter:blur(14px); box-shadow:var(--sh);
+}
+.cp-card:hover { border-color:var(--accent); transform:translateX(4px); box-shadow:0 8px 28px rgba(0,229,255,.12); }
+.rank {
+  width:31px; height:31px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Mono',monospace; font-size:13px; font-weight:700; flex-shrink:0;
+}
+.r1{background:var(--accent);color:#000;} .r2{background:var(--a2);color:#fff;} .r3{background:#7c3aed;color:#fff;}
+.cp-mid { flex:1; min-width:0; }
+.cp-name { font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
+.cp-meta { display:flex; gap:8px; align-items:center; }
+.cp-dist { font-size:10.5px; color:var(--muted); font-family:'Space Mono',monospace; }
+.pill { font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:20px; font-family:'Space Mono',monospace; }
+.p-hi{background:rgba(34,197,94,.15);color:var(--green);}
+.p-md{background:rgba(245,158,11,.15);color:var(--yellow);}
+.p-lo{background:rgba(239,68,68,.15);color:var(--red);}
+.p-na{background:rgba(107,125,153,.12);color:var(--muted);}
+.cp-right { text-align:right; flex-shrink:0; }
+.lots-n { font-family:'Space Mono',monospace; font-size:19px; font-weight:700; line-height:1; }
+.lots-l { font-size:8.5px; color:var(--muted); letter-spacing:1px; }
+.empty {
+  background:rgba(19,25,33,.95); border:1px solid var(--border);
+  border-radius:var(--r); padding:18px 14px; text-align:center;
+  pointer-events:all; backdrop-filter:blur(14px);
+}
+.empty p { font-size:13px; color:var(--muted); line-height:1.7; }
+
+/* ═══════════════════════════════ MARKERS */
+.me-dot {
+  width:15px; height:15px; background:var(--a3);
+  border-radius:50%; border:2.5px solid #fff;
+  animation:pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100%{box-shadow:0 0 0 4px rgba(57,255,20,.22),0 0 12px rgba(57,255,20,.45);}
+  50%{box-shadow:0 0 0 8px rgba(57,255,20,.08),0 0 20px rgba(57,255,20,.25);}
+}
+.cp-pin {
+  width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Mono',monospace; font-size:13px; font-weight:700;
+  border:2px solid rgba(0,0,0,.25); box-shadow:0 3px 10px rgba(0,0,0,.55); cursor:pointer;
+}
+
+/* ═══════════════════════════════ CARPARK DETAIL MODAL */
+.ov {
+  position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:700;
+  display:flex; align-items:flex-end; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity .22s;
+  backdrop-filter:blur(5px);
+}
+.ov.open { opacity:1; pointer-events:all; }
+.sheet {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:20px 20px 0 0; width:100%; max-width:520px;
+  padding:26px 22px 34px; position:relative;
+  transform:translateY(28px); transition:transform .28s cubic-bezier(.34,1.56,.64,1);
+}
+.ov.open .sheet { transform:translateY(0); }
+.drag { width:38px; height:4px; background:var(--border); border-radius:2px; margin:0 auto 20px; }
+.x-btn {
+  position:absolute; top:18px; right:18px;
+  background:var(--border); border:none; cursor:pointer;
+  width:28px; height:28px; border-radius:50%; color:var(--muted);
+  font-size:15px; display:flex; align-items:center; justify-content:center;
+  transition:background .2s;
+}
+.x-btn:hover { background:var(--red); color:#fff; }
+.m-rank { display:inline-flex; align-items:center; gap:7px; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1px; color:var(--muted); margin-bottom:7px; }
+.m-rdot { width:7px; height:7px; border-radius:50%; }
+.m-title { font-size:18px; font-weight:700; margin-bottom:5px; line-height:1.25; }
+.m-addr { font-size:12.5px; color:var(--muted); margin-bottom:18px; }
+.m-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:18px; }
+.sbox { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:13px 10px; text-align:center; }
+.sval { font-family:'Space Mono',monospace; font-size:21px; font-weight:700; margin-bottom:3px; }
+.slbl { font-size:9.5px; color:var(--muted); letter-spacing:1px; }
+.bar-wrap { margin-bottom:18px; }
+.bar-hdr { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:5px; }
+.bar-bg { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:3px; transition:width .55s ease; }
+.tags { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:20px; }
+.tag { background:var(--surface); border:1px solid var(--border); font-size:10.5px; color:var(--muted); padding:3px 9px; border-radius:20px; font-family:'Space Mono',monospace; }
+.m-btns { display:flex; gap:9px; }
+.btn-go {
+  flex:1; background:var(--accent); border:none; color:#000;
+  font-family:'DM Sans',sans-serif; font-size:14px; font-weight:700;
+  padding:13px; border-radius:10px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  transition:background .2s, transform .15s;
+}
+.btn-go:hover { background:#00c4db; transform:scale(1.02); }
+.btn-cls {
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500;
+  padding:13px 16px; border-radius:10px; cursor:pointer; transition:border-color .2s;
+}
+.btn-cls:hover { border-color:var(--accent); }
+
+/* ═══════════════════════════════ API KEY MODAL */
+.api-ov {
+  position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:900;
+  display:flex; align-items:center; justify-content:center; padding:18px;
+  backdrop-filter:blur(12px);
+  opacity:0; pointer-events:none; transition:opacity .3s;
+}
+.api-ov.open { opacity:1; pointer-events:all; }
+.api-box {
+  background:var(--card); border:1px solid var(--border); border-radius:20px;
+  width:100%; max-width:480px; padding:30px 26px;
+  transform:translateY(16px) scale(.97);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+}
+.api-ov.open .api-box { transform:translateY(0) scale(1); }
+
+.api-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  background:rgba(0,229,255,.07); border:1px solid rgba(0,229,255,.18);
+  border-radius:20px; padding:4px 11px;
+  font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:2px; color:var(--accent);
+  margin-bottom:16px;
+}
+.api-h1 { font-size:22px; font-weight:700; margin-bottom:7px; }
+.api-sub { font-size:13px; color:var(--muted); line-height:1.65; margin-bottom:22px; }
+
+.steps-box {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:16px 18px; margin-bottom:20px;
+}
+.steps-title { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:2.5px; color:var(--accent); margin-bottom:12px; }
+.steps { list-style:none; display:flex; flex-direction:column; gap:10px; }
+.steps li { display:flex; gap:10px; align-items:flex-start; font-size:12.5px; color:var(--muted); line-height:1.55; }
+.sn {
+  font-family:'Space Mono',monospace; font-size:9.5px; color:var(--accent);
+  background:rgba(0,229,255,.1); border:1px solid rgba(0,229,255,.2);
+  min-width:20px; height:20px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;
+}
+a.lnk { color:var(--accent); text-decoration:none; border-bottom:1px dashed rgba(0,229,255,.35); }
+a.lnk:hover { border-bottom-color:var(--accent); }
+
+.inp-row { display:flex; gap:7px; margin-bottom:8px; }
+.api-inp {
+  flex:1; background:var(--surface); border:1.5px solid var(--border);
+  color:var(--text); font-family:'Space Mono',monospace; font-size:11.5px;
+  padding:11px 14px; border-radius:10px; outline:none;
+  transition:border .2s, box-shadow .2s;
+}
+.api-inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,.09); }
+.api-inp::placeholder { color:var(--muted); }
+.api-inp.ok  { border-color:var(--green) !important; }
+.api-inp.err { border-color:var(--red)   !important; }
+
+.btn-test {
+  background:var(--border); border:1px solid var(--border); color:var(--text);
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1px;
+  padding:11px 13px; border-radius:10px; cursor:pointer;
+  transition:background .2s; white-space:nowrap;
+}
+.btn-test:hover:not(:disabled) { background:#2d3f5a; }
+.btn-test:disabled { opacity:.4; cursor:not-allowed; }
+
+.test-msg { font-size:12px; min-height:18px; margin-bottom:14px; display:flex; align-items:center; gap:7px; padding:0 2px; }
+.test-msg.ok  { color:var(--green); }
+.test-msg.err { color:var(--red); }
+.test-msg.ing { color:var(--muted); }
+
+.btn-save {
+  width:100%; background:var(--accent); border:none; color:#000;
+  font-family:'DM Sans',sans-serif; font-size:15px; font-weight:700;
+  padding:14px; border-radius:12px; cursor:pointer;
+  transition:background .2s, transform .15s, opacity .2s;
+}
+.btn-save:hover:not(:disabled) { background:#00c4db; transform:scale(1.01); }
+.btn-save:disabled { opacity:.3; cursor:not-allowed; transform:none; }
+
+.skip-row { text-align:center; margin-top:11px; }
+.btn-skip {
+  background:none; border:none; font-size:12px; color:var(--muted);
+  cursor:pointer; font-family:'DM Sans',sans-serif; text-decoration:underline;
+}
+.btn-skip:hover { color:var(--text); }
+
+/* ═══════════════════════════════ RESPONSIVE */
+@media(max-width:500px){
+  .sb{left:10px;right:10px;width:auto;bottom:12px;}
+  .m-stats{grid-template-columns:repeat(2,1fr);}
+  .logo,.hbtn span{display:none;}
+  .hbtn{padding:7px 8px;}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">CP<em>.</em>SG</div>
+  <div class="sw">
+    <input id="si" type="text" placeholder="Search area, MRT, street…" autocomplete="off"/>
+    <button class="sw-btn" id="sbtn" title="Search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <div class="ac" id="ac"></div>
+  </div>
+  <div class="hbtns">
+    <button class="hbtn" id="locBtn">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      <span>LOCATE</span>
+    </button>
+    <button class="hbtn" id="apiBtn">
+      <div class="dot" id="apiDot"></div>
+      <span>API KEY</span>
+    </button>
+  </div>
+</header>
+
+<!-- STATUS -->
+<div class="status" id="status"><div class="spin"></div><span id="stMsg">Loading…</span></div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- SIDEBAR -->
+<div class="sb" id="sb">
+  <div class="sb-title" id="sbTitle">NEAREST CARPARKS</div>
+  <div class="empty"><p>📍 Press <strong>LOCATE</strong> or search<br>an area to find nearby carparks</p></div>
+</div>
+
+<!-- ═══ API KEY MODAL ═══ -->
+<div class="api-ov" id="apiOv">
+  <div class="api-box">
+    <div class="api-chip">
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      ONE-TIME SETUP
+    </div>
+    <div class="api-h1">Connect to Live Data</div>
+    <div class="api-sub">A <strong style="color:var(--text)">free</strong> API key from data.gov.sg unlocks real-time carpark availability. Stored only in your browser — never sent anywhere else.</div>
+
+    <div class="steps-box">
+      <div class="steps-title">HOW TO GET YOUR FREE KEY</div>
+      <ul class="steps">
+        <li><div class="sn">1</div><span>Go to <a class="lnk" href="https://beta.data.gov.sg/apis" target="_blank" rel="noopener">beta.data.gov.sg/apis</a> and sign in (email or Singpass)</span></li>
+        <li><div class="sn">2</div><span>Click <strong style="color:var(--text)">"Request for API Key"</strong> at the top right — it's instant &amp; free</span></li>
+        <li><div class="sn">3</div><span>Copy your key and paste it below, then click <strong style="color:var(--text)">Test Key</strong></span></li>
+        <li><div class="sn">4</div><span>Once verified, click <strong style="color:var(--text)">Save &amp; Continue</strong> — done!</span></li>
+      </ul>
+    </div>
+
+    <div class="inp-row">
+      <input class="api-inp" id="apiInp" type="text" placeholder="Paste your API key here…" autocomplete="off" spellcheck="false"/>
+      <button class="btn-test" id="testBtn">TEST KEY</button>
+    </div>
+    <div class="test-msg" id="testMsg"></div>
+
+    <button class="btn-save" id="saveBtn" disabled>Save &amp; Continue →</button>
+    <div class="skip-row">
+      <button class="btn-skip" id="skipBtn">Skip for now — I'll add it later</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CARPARK DETAIL MODAL ═══ -->
+<div class="ov" id="ov">
+  <div class="sheet">
+    <div class="drag"></div>
+    <button class="x-btn" id="xBtn">✕</button>
+    <div class="m-rank"><div class="m-rdot" id="mDot"></div><span id="mRank"></span></div>
+    <div class="m-title" id="mTitle"></div>
+    <div class="m-addr"  id="mAddr"></div>
+    <div class="m-stats" id="mStats"></div>
+    <div class="bar-wrap">
+      <div class="bar-hdr"><span>Availability</span><span id="barTxt"></span></div>
+      <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
+    </div>
+    <div class="tags" id="mTags"></div>
+    <div class="m-btns">
+      <button class="btn-go" id="navBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Navigate via Google Maps
+      </button>
+      <button class="btn-cls" id="xBtn2">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════════════════ */
+const LS_KEY      = 'cpsg_api_v3';
+const NOMINATIM   = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=sg&limit=5&q=';
+const HDB_INFO    = 'https://data.gov.sg/api/action/datastore_search?resource_id=d_23f946fa557947f93a8043bbef41dd09&limit=3000';
+const AVAIL_API   = 'https://api.data.gov.sg/v1/transport/carpark-availability';
+const AVAIL_CKAN  = 'https://data.gov.sg/api/action/datastore_search?resource_id=d_ca933a644e55d34fe21f28b8052fac63&limit=2000';
+const RANK_COLORS = ['#00e5ff', '#ff6b35', '#7c3aed'];
+
+/* ═══════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════ */
+let MAP          = null;   // Leaflet map instance
+let userMarker   = null;
+let cpMarkers    = [];
+let carparkInfo  = {};     // { id → {lat,lng,address,...} }
+let availMap     = {};     // { id → {lots_available, total_lots, lot_type} }
+let userLatLng   = null;
+let selectedCP   = null;
+let apiKey       = localStorage.getItem(LS_KEY) || '';
+let keyVerified  = false;
+let dataLoaded   = false;
+
+/* ═══════════════════════════════════════════════════════
+   LOAD LEAFLET DYNAMICALLY (fixes "L is undefined")
+   We inject the script tag and wait for it to load
+   before calling initMap()
+═══════════════════════════════════════════════════════ */
+function loadLeaflet() {
+  return new Promise((resolve, reject) => {
+    // If already loaded (e.g. cached), resolve immediately
+    if (window.L && window.L.map) { resolve(); return; }
+
+    const css = document.createElement('link');
+    css.rel  = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+
+    const js = document.createElement('script');
+    js.src   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload  = resolve;
+    js.onerror = reject;
+    document.head.appendChild(js);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   STATUS PILL
+═══════════════════════════════════════════════════════ */
+function showSt(msg) {
+  document.getElementById('stMsg').textContent = msg;
+  document.getElementById('status').classList.add('on');
+}
+function hideSt() { document.getElementById('status').classList.remove('on'); }
+
+/* ═══════════════════════════════════════════════════════
+   API DOT
+═══════════════════════════════════════════════════════ */
+function setDot(ok) { document.getElementById('apiDot').classList.toggle('ok', ok); }
+
+/* ═══════════════════════════════════════════════════════
+   API KEY MODAL
+═══════════════════════════════════════════════════════ */
+function openApiModal() {
+  const inp = document.getElementById('apiInp');
+  inp.value = apiKey;
+  inp.className = 'api-inp';
+  setTestMsg('', '');
+  document.getElementById('saveBtn').disabled = !keyVerified;
+  document.getElementById('apiOv').classList.add('open');
+}
+function closeApiModal() { document.getElementById('apiOv').classList.remove('open'); }
+
+function setTestMsg(type, msg, spinning = false) {
+  const el = document.getElementById('testMsg');
+  el.className = `test-msg ${type}`;
+  el.innerHTML = spinning
+    ? `<div class="spin" style="width:10px;height:10px;border-top-color:var(--accent)"></div>Testing…`
+    : msg;
+}
+
+document.getElementById('apiBtn').addEventListener('click', openApiModal);
+
+document.getElementById('apiInp').addEventListener('input', () => {
+  keyVerified = false;
+  document.getElementById('apiInp').className = 'api-inp';
+  setTestMsg('', '');
+  document.getElementById('saveBtn').disabled = true;
+});
+
+document.getElementById('testBtn').addEventListener('click', async () => {
+  const key = document.getElementById('apiInp').value.trim();
+  if (!key) { setTestMsg('err', '✗ Please paste your API key first.'); return; }
+
+  document.getElementById('testBtn').disabled = true;
+  setTestMsg('ing', '', true);
+
+  try {
+    const res  = await fetch(AVAIL_API, { headers: { 'Authorization': key } });
+    if (res.ok) {
+      const json  = await res.json();
+      const count = json.items?.[0]?.carpark_data?.length || 0;
+      setTestMsg('ok', `✓ Key valid! Live data for ${count.toLocaleString()} carparks received.`);
+      document.getElementById('apiInp').className = 'api-inp ok';
+      keyVerified = true;
+      document.getElementById('saveBtn').disabled = false;
+    } else {
+      setTestMsg('err', `✗ Rejected (HTTP ${res.status}). Double-check your key.`);
+      document.getElementById('apiInp').className = 'api-inp err';
+      keyVerified = false;
+      document.getElementById('saveBtn').disabled = true;
+    }
+  } catch (e) {
+    setTestMsg('err', '✗ Network error — check your internet connection.');
+    keyVerified = false;
+  }
+  document.getElementById('testBtn').disabled = false;
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if (!keyVerified) return;
+  apiKey = document.getElementById('apiInp').value.trim();
+  localStorage.setItem(LS_KEY, apiKey);
+  setDot(true);
+  closeApiModal();
+  // Reload availability with the new key
+  availMap = {};
+  dataLoaded = false;
+  await loadData();
+  if (userLatLng) runSearch(userLatLng.lat, userLatLng.lng);
+});
+
+document.getElementById('skipBtn').addEventListener('click', () => {
+  closeApiModal();
+  if (!dataLoaded) loadData(); // still try legacy fallback
+});
+
+/* ═══════════════════════════════════════════════════════
+   MAP INIT
+═══════════════════════════════════════════════════════ */
+function initMap() {
+  MAP = L.map('map', { zoomControl: false }).setView([1.3521, 103.8198], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(MAP);
+  L.control.zoom({ position: 'bottomright' }).addTo(MAP);
+}
+
+/* ═══════════════════════════════════════════════════════
+   SVY21 → WGS84
+   Accurate implementation for Singapore projection
+═══════════════════════════════════════════════════════ */
+function svy21ToWGS84(E, N) {
+  // Singapore SVY21 parameters
+  const a  = 6378137.0;
+  const f  = 1 / 298.257223563;
+  const b  = a * (1 - f);
+  const e2 = 1 - (b / a) ** 2;
+  const ep2 = e2 / (1 - e2);
+
+  const k0  = 1.0;
+  const N0  = 38744.572;
+  const E0  = 28001.642;
+  const lat0 = 1.366666667 * Math.PI / 180;   // ~1°22'
+  const lon0 = 103.833333333 * Math.PI / 180;  // ~103°50'
+
+  // Meridional arc at origin
+  function M(phi) {
+    return a * (
+      (1 - e2/4 - 3*e2**2/64 - 5*e2**3/256) * phi
+      - (3*e2/8 + 3*e2**2/32 + 45*e2**3/1024) * Math.sin(2*phi)
+      + (15*e2**2/256 + 45*e2**3/1024) * Math.sin(4*phi)
+      - (35*e2**3/3072) * Math.sin(6*phi)
+    );
+  }
+
+  const M0 = M(lat0);
+  const m  = M0 + (N - N0) / k0;
+  const mu = m / (a * (1 - e2/4 - 3*e2**2/64 - 5*e2**3/256));
+
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const phi1 = mu
+    + (3*e1/2 - 27*e1**3/32) * Math.sin(2*mu)
+    + (21*e1**2/16 - 55*e1**4/32) * Math.sin(4*mu)
+    + (151*e1**3/96) * Math.sin(6*mu)
+    + (1097*e1**4/512) * Math.sin(8*mu);
+
+  const sin1 = Math.sin(phi1), cos1 = Math.cos(phi1), tan1 = Math.tan(phi1);
+  const nu1  = a / Math.sqrt(1 - e2 * sin1**2);
+  const rho1 = a * (1 - e2) / Math.pow(1 - e2 * sin1**2, 1.5);
+  const T1   = tan1 ** 2;
+  const C1   = ep2 * cos1 ** 2;
+  const D    = (E - E0) / (nu1 * k0);
+
+  const lat = phi1
+    - (nu1 * tan1 / rho1) * (
+        D**2 / 2
+      - (5 + 3*T1 + 10*C1 - 4*C1**2 - 9*ep2) * D**4 / 24
+      + (61 + 90*T1 + 298*C1 + 45*T1**2 - 252*ep2 - 3*C1**2) * D**6 / 720
+    );
+
+  const lon = lon0 + (
+      D
+    - (1 + 2*T1 + C1) * D**3 / 6
+    + (5 - 2*C1 + 28*T1 - 3*C1**2 + 8*ep2 + 24*T1**2) * D**5 / 120
+  ) / cos1;
+
+  return { lat: lat * 180 / Math.PI, lng: lon * 180 / Math.PI };
+}
+
+/* ═══════════════════════════════════════════════════════
+   FETCH HDB CARPARK INFO (metadata + coordinates)
+═══════════════════════════════════════════════════════ */
+async function loadCarparkInfo() {
+  try {
+    const res  = await fetch(HDB_INFO);
+    const json = await res.json();
+    let n = 0;
+    for (const r of (json.result?.records || [])) {
+      const E = parseFloat(r.x_coord);
+      const N = parseFloat(r.y_coord);
+      if (!r.car_park_no || isNaN(E) || isNaN(N)) continue;
+      const ll = svy21ToWGS84(E, N);
+      // Strict SG bounding box check
+      if (ll.lat < 1.15 || ll.lat > 1.48 || ll.lng < 103.6 || ll.lng > 104.05) continue;
+      carparkInfo[r.car_park_no] = {
+        id:        r.car_park_no,
+        address:   r.address || r.car_park_no,
+        lat:       ll.lat,
+        lng:       ll.lng,
+        type:      r.car_park_type           || 'SURFACE CAR PARK',
+        system:    r.type_of_parking_system  || 'COUPON PARKING',
+        freepark:  r.free_parking            || 'NO',
+        nightpark: r.night_parking           || 'YES',
+        shortterm: r.short_term_parking      || 'WHOLE DAY',
+        gantry:    r.gantry_height           || null,
+        basement:  r.car_park_basement       || 'N',
+      };
+      n++;
+    }
+    console.log(`[CP.SG] HDB info loaded: ${n} carparks`);
+    return n > 0;
+  } catch (e) {
+    console.error('[CP.SG] loadCarparkInfo failed:', e);
+    return false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   FETCH AVAILABILITY
+   1. Try new API endpoint with apiKey (if set)
+   2. Fall back to legacy CKAN endpoint (no auth)
+═══════════════════════════════════════════════════════ */
+async function loadAvailability() {
+  // --- Attempt 1: authenticated new API ---
+  if (apiKey) {
+    try {
+      const res = await fetch(AVAIL_API, { headers: { 'Authorization': apiKey } });
+      if (res.ok) {
+        const json   = await res.json();
+        const cpList = json.items?.[0]?.carpark_data || [];
+        if (cpList.length) {
+          availMap = {};
+          cpList.forEach(cp => {
+            for (const info of (cp.carpark_info || [])) {
+              const id = cp.carpark_number;
+              // Prefer CAR (C) lots; store first seen if no CAR
+              if (!availMap[id] || info.lot_type === 'C') {
+                availMap[id] = {
+                  lots_available: parseInt(info.lots_available) || 0,
+                  total_lots:     parseInt(info.total_lots)     || 0,
+                  lot_type:       info.lot_type || 'C',
+                };
+              }
+            }
+          });
+          console.log(`[CP.SG] Availability via API key: ${Object.keys(availMap).length}`);
+          setDot(true);
+          return true;
+        }
+      }
+    } catch (e) { console.warn('[CP.SG] API key endpoint failed, trying fallback', e); }
+  }
+
+  // --- Attempt 2: legacy unauthenticated CKAN ---
+  try {
+    const res  = await fetch(AVAIL_CKAN);
+    const json = await res.json();
+    availMap = {};
+    for (const r of (json.result?.records || [])) {
+      const id = r.carpark_number;
+      if (!availMap[id] || r.lot_type === 'C') {
+        availMap[id] = {
+          lots_available: parseInt(r.lots_available) || 0,
+          total_lots:     parseInt(r.total_lots)     || 0,
+          lot_type:       r.lot_type || 'C',
+        };
+      }
+    }
+    console.log(`[CP.SG] Availability via legacy CKAN: ${Object.keys(availMap).length}`);
+    return Object.keys(availMap).length > 0;
+  } catch (e) {
+    console.error('[CP.SG] All availability sources failed:', e);
+    return false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   BOOTSTRAP — load both datasets in parallel
+═══════════════════════════════════════════════════════ */
+async function loadData() {
+  showSt('Loading carpark data…');
+  const [infoOk, availOk] = await Promise.all([
+    Object.keys(carparkInfo).length > 0 ? Promise.resolve(true) : loadCarparkInfo(),
+    Object.keys(availMap).length    > 0 ? Promise.resolve(true) : loadAvailability(),
+  ]);
+  hideSt();
+  dataLoaded = infoOk;
+
+  if (!infoOk)  { showSt('⚠ Could not load carpark locations'); setTimeout(hideSt, 5000); }
+  if (!availOk) { showSt('⚠ No availability data — add API key'); setTimeout(hideSt, 6000); }
+
+  return infoOk;
+}
+
+/* ═══════════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════════ */
+function haversine(la1, lo1, la2, lo2) {
+  const R = 6371000;
+  const dLa = (la2 - la1) * Math.PI / 180;
+  const dLo = (lo2 - lo1) * Math.PI / 180;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+const fmtD  = m   => m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
+const pctCls = p  => p < 0 ? 'p-na' : p > 50 ? 'p-hi' : p > 20 ? 'p-md' : 'p-lo';
+const pctLbl = p  => p < 0 ? 'N/A'  : p > 50 ? 'HIGH' : p > 20 ? 'MED'  : 'LOW';
+const pctClr = p  => p < 0 ? 'var(--muted)' : p > 50 ? 'var(--green)' : p > 20 ? 'var(--yellow)' : 'var(--red)';
+
+/* ═══════════════════════════════════════════════════════
+   FIND NEAREST CARPARKS
+═══════════════════════════════════════════════════════ */
+function findNearest(lat, lng, n = 3) {
+  return Object.values(carparkInfo)
+    .map(info => ({ ...info, dist: haversine(lat, lng, info.lat, info.lng), avail: availMap[info.id] || null }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, n);
+}
+
+/* ═══════════════════════════════════════════════════════
+   RENDER SIDEBAR
+═══════════════════════════════════════════════════════ */
+function renderSidebar(cps) {
+  const sb     = document.getElementById('sb');
+  const header = document.getElementById('sbTitle');
+  sb.innerHTML = '';
+  sb.appendChild(header);
+
+  if (!cps.length) {
+    sb.innerHTML += '<div class="empty"><p>No carparks found nearby.</p></div>';
+    return;
+  }
+  cps.forEach((cp, i) => {
+    const av    = cp.avail;
+    const total = av?.total_lots      || 0;
+    const free  = av?.lots_available  || 0;
+    const pct   = total > 0 ? Math.round((free / total) * 100) : -1;
+
+    const card = document.createElement('div');
+    card.className = 'cp-card';
+    card.innerHTML = `
+      <div class="rank r${i+1}">${i+1}</div>
+      <div class="cp-mid">
+        <div class="cp-name">${cp.address}</div>
+        <div class="cp-meta">
+          <span class="cp-dist">${fmtD(cp.dist)}</span>
+          <span class="pill ${pctCls(pct)}">${pctLbl(pct)}${pct >= 0 ? ' · ' + pct + '%' : ''}</span>
+        </div>
+      </div>
+      <div class="cp-right">
+        <div class="lots-n" style="color:${pctClr(pct)}">${pct >= 0 ? free : '—'}</div>
+        <div class="lots-l">LOTS</div>
+      </div>`;
+    card.addEventListener('click', () => openModal(cp, i));
+    sb.appendChild(card);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAP MARKERS
+═══════════════════════════════════════════════════════ */
+function mkIcon(html, size) {
+  return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+}
+
+function placeMe(lat, lng) {
+  if (userMarker) userMarker.remove();
+  userMarker = L.marker([lat, lng], { icon: mkIcon('<div class="me-dot"></div>', 15) })
+                 .addTo(MAP)
+                 .bindTooltip('You are here', { direction: 'top', offset: [0, -12] });
+}
+
+function placePins(cps) {
+  cpMarkers.forEach(m => m.remove()); cpMarkers = [];
+  cps.forEach((cp, i) => {
+    const col = RANK_COLORS[i];
+    const m   = L.marker([cp.lat, cp.lng], {
+      icon: mkIcon(`<div class="cp-pin" style="background:${col};color:${i===0?'#000':'#fff'}">${i+1}</div>`, 32)
+    }).addTo(MAP);
+    m.on('click', () => openModal(cp, i));
+    cpMarkers.push(m);
+  });
+}
+
+function fitAll(lat, lng, cps) {
+  const pts = [[lat, lng], ...cps.map(c => [c.lat, c.lng])];
+  MAP.fitBounds(L.latLngBounds(pts), { padding: [88, 88] });
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAIN SEARCH FLOW
+═══════════════════════════════════════════════════════ */
+async function runSearch(lat, lng) {
+  userLatLng = { lat, lng };
+  if (!dataLoaded) {
+    showSt('Loading carpark data…');
+    await loadData();
+  }
+  showSt('Finding nearest carparks…');
+  const nearest = findNearest(lat, lng);
+  renderSidebar(nearest);
+  placeMe(lat, lng);
+  placePins(nearest);
+  fitAll(lat, lng, nearest);
+  hideSt();
+}
+
+/* ═══════════════════════════════════════════════════════
+   GEOLOCATION
+═══════════════════════════════════════════════════════ */
+document.getElementById('locBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) { showSt('⚠ Geolocation not supported'); setTimeout(hideSt, 3000); return; }
+  showSt('Getting your location…');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      MAP.setView([pos.coords.latitude, pos.coords.longitude], 14);
+      runSearch(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => { hideSt(); showSt(`⚠ ${err.message}`); setTimeout(hideSt, 4000); },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
+
+/* ═══════════════════════════════════════════════════════
+   SEARCH BAR + AUTOCOMPLETE
+═══════════════════════════════════════════════════════ */
+let acTimer;
+const $si = document.getElementById('si');
+const $ac = document.getElementById('ac');
+
+$si.addEventListener('input', () => {
+  clearTimeout(acTimer);
+  const q = $si.value.trim();
+  if (q.length < 2) { $ac.classList.remove('open'); return; }
+  acTimer = setTimeout(() => doAC(q), 340);
+});
+
+async function doAC(q) {
+  try {
+    const data = await (await fetch(NOMINATIM + encodeURIComponent(q + ' Singapore'))).json();
+    if (!data.length) { $ac.classList.remove('open'); return; }
+    $ac.innerHTML = data.slice(0, 5).map(r => {
+      const label = r.display_name.replace(', Singapore', '').split(',').slice(0, 3).join(', ');
+      return `<div class="ac-row" data-lat="${r.lat}" data-lng="${r.lon}"><span>📍</span><span>${label}</span></div>`;
+    }).join('');
+    $ac.classList.add('open');
+    $ac.querySelectorAll('.ac-row').forEach(el => {
+      el.addEventListener('click', () => {
+        $si.value = el.querySelector('span:last-child').textContent;
+        $ac.classList.remove('open');
+        const lat = parseFloat(el.dataset.lat), lng = parseFloat(el.dataset.lng);
+        MAP.setView([lat, lng], 15);
+        runSearch(lat, lng);
+      });
+    });
+  } catch { $ac.classList.remove('open'); }
+}
+
+async function doSearch(q) {
+  showSt('Searching…');
+  try {
+    const data = await (await fetch(NOMINATIM + encodeURIComponent(q + ' Singapore'))).json();
+    if (!data.length) { showSt('⚠ Location not found'); setTimeout(hideSt, 3000); return; }
+    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+    MAP.setView([lat, lng], 15);
+    runSearch(lat, lng);
+  } catch { showSt('⚠ Search failed'); setTimeout(hideSt, 3000); }
+}
+
+// Both Enter AND button always trigger a search
+$si.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  $ac.classList.remove('open');
+  const q = $si.value.trim();
+  if (q) doSearch(q);
+});
+document.getElementById('sbtn').addEventListener('click', () => {
+  $ac.classList.remove('open');
+  const q = $si.value.trim();
+  if (q) doSearch(q);
+});
+document.addEventListener('click', e => {
+  if (!document.querySelector('.sw').contains(e.target)) $ac.classList.remove('open');
+});
+
+/* ═══════════════════════════════════════════════════════
+   CARPARK DETAIL MODAL
+═══════════════════════════════════════════════════════ */
+function openModal(cp, rank) {
+  selectedCP = cp;
+  const av    = cp.avail;
+  const total = av?.total_lots     || 0;
+  const free  = av?.lots_available || 0;
+  const pct   = total > 0 ? Math.round((free / total) * 100) : -1;
+
+  document.getElementById('mDot').style.background = RANK_COLORS[rank];
+  document.getElementById('mRank').textContent     = `#${rank+1} NEAREST · ${fmtD(cp.dist)}`;
+  document.getElementById('mTitle').textContent    = cp.address;
+  document.getElementById('mAddr').textContent     = `${cp.id} · ${cp.type}`;
+
+  const sbox = (val, lbl, color) =>
+    `<div class="sbox"><div class="sval" style="color:${color}">${val}</div><div class="slbl">${lbl}</div></div>`;
+
+  document.getElementById('mStats').innerHTML = pct >= 0
+    ? sbox(free, 'AVAILABLE', pctClr(pct)) + sbox(total, 'TOTAL LOTS', 'var(--text)') + sbox(pct + '%', 'OCCUPANCY', pctClr(pct))
+    : sbox('—', 'AVAILABLE', 'var(--muted)') + sbox('—', 'TOTAL LOTS', 'var(--muted)') + sbox('N/A', 'OCCUPANCY', 'var(--muted)');
+
+  document.getElementById('barTxt').textContent       = pct >= 0 ? `${free} / ${total} lots` : 'No data — add API key';
+  document.getElementById('barFill').style.width      = pct >= 0 ? `${pct}%` : '0%';
+  document.getElementById('barFill').style.background = pctClr(pct);
+
+  const tags = [
+    cp.type,
+    cp.system,
+    cp.freepark && cp.freepark !== 'NO' ? `🅿 ${cp.freepark}` : null,
+    cp.nightpark === 'YES' ? '🌙 NIGHT PARKING' : null,
+    cp.shortterm || null,
+    cp.basement === 'Y' ? '🏢 BASEMENT' : null,
+    cp.gantry   ? `↕ ${cp.gantry}m GANTRY` : null,
+    av?.lot_type === 'H' ? '🚛 HEAVY VEH' : av?.lot_type === 'Y' ? '🏍 MOTORCYCLE' : '🚗 CARS',
+    !av ? '⚠ Availability unavailable' : null,
+  ].filter(Boolean);
+
+  document.getElementById('mTags').innerHTML = tags.map(t => `<span class="tag">${t}</span>`).join('');
+  document.getElementById('ov').classList.add('open');
+}
+
+function closeModal() { document.getElementById('ov').classList.remove('open'); }
+document.getElementById('xBtn').addEventListener('click', closeModal);
+document.getElementById('xBtn2').addEventListener('click', closeModal);
+document.getElementById('ov').addEventListener('click', e => { if (e.target.id === 'ov') closeModal(); });
+document.getElementById('navBtn').addEventListener('click', () => {
+  if (!selectedCP) return;
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedCP.lat},${selectedCP.lng}&travelmode=driving`, '_blank');
+});
+
+/* ═══════════════════════════════════════════════════════
+   BOOT — wait for DOM, then load Leaflet, then init
+═══════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Load Leaflet JS dynamically (prevents "L is undefined")
+  try {
+    showSt('Loading map…');
+    await loadLeaflet();
+  } catch (e) {
+    hideSt();
+    document.getElementById('map').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7d99;font-size:14px;">⚠ Could not load map — check your internet connection</div>';
+    return;
+  }
+
+  // 2. Init map
+  initMap();
+  hideSt();
+
+  // 3. Show API key modal if no key stored, otherwise pre-warm data silently
+  if (!apiKey) {
+    openApiModal();
+  } else {
+    setDot(true);
+    loadData(); // background preload
+  }
+});
+</script>
+</body>
+</html>
